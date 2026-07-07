@@ -1,11 +1,14 @@
 name: Terraform Plan
 
 on:
+  push:
+    branches:
+      - main
+
   pull_request:
     paths:
       - 'infra/**'
       - '.github/workflows/terraform-plan.yml'
-
 jobs:
   terraform:
     runs-on: ubuntu-latest
