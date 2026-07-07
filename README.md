@@ -1,7 +1,5 @@
 # Terraform AWS DB Assessment
 
-Testing GitHub Actions workflow.
-
 This repository implements a plan-only AWS infrastructure design with Terraform and a runnable local PostgreSQL workflow for backup, restore, and query optimization.
 
 ## What is included
@@ -18,6 +16,57 @@ This repository implements a plan-only AWS infrastructure design with Terraform 
 The Terraform design models this flow:
 
 `Internet -> ALB -> ECS/Fargate -> RDS PostgreSQL`
+
+### High-level diagram
+
+```text
+                    Internet
+                        |
+                        v
+              +-------------------+
+              |  Public ALB       |
+              |  public subnets   |
+              +-------------------+
+                        |
+                        v
+              +-------------------+
+              |  ECS / Fargate    |
+              |  private app      |
+              |  subnets          |
+              +-------------------+
+                        |
+                        v
+              +-------------------+
+              |  RDS PostgreSQL   |
+              |  private db       |
+              |  subnets          |
+              +-------------------+
+```
+
+### Network layout
+
+```text
+VPC
+|
++-- Public Subnet A
+|   +-- ALB
+|   +-- NAT Gateway
+|
++-- Public Subnet B
+|   +-- ALB
+|
++-- Private App Subnet A
+|   +-- ECS task
+|
++-- Private App Subnet B
+|   +-- ECS task
+|
++-- Private DB Subnet A
+|   +-- RDS subnet group
+|
++-- Private DB Subnet B
+    +-- RDS subnet group
+```
 
 Key design choices:
 
@@ -100,6 +149,32 @@ from inside `infra/envs/dev` or `infra/envs/prod`.
 
 Note: the local backend is used for reviewability. For a real deployment, replace it with an S3 backend and real AWS credentials.
 
+## Terraform module breakdown
+
+- `modules/network`
+  - VPC, internet gateway, public subnets, private app subnets, private db subnets, NAT gateway, and route tables
+- `modules/security`
+  - ALB security group, ECS security group, and RDS security group
+- `modules/alb`
+  - Application Load Balancer, listener, and target group
+- `modules/ecs`
+  - ECS cluster, task definition, service, IAM roles, and CloudWatch log group
+- `modules/rds`
+  - DB subnet group and private RDS PostgreSQL instance
+
+### Naming pattern
+
+Most AWS resource names are generated from:
+
+- `project_name`
+- `environment`
+
+Example:
+
+- ALB: `hotel-platform-dev-alb`
+- ECS cluster: `hotel-platform-dev-cluster`
+- RDS instance identifier: `hotel-platform-dev-db`
+
 ## Local PostgreSQL setup
 
 ### Start the database
@@ -113,6 +188,25 @@ The container bootstraps the database automatically by running:
 - `database/migrations/001_create_tables.sql`
 - `database/indexes/001_query_optimization.sql`
 - `database/seeds/001_seed_data.sql`
+
+### Local database flow
+
+```text
+docker compose up
+      |
+      v
+PostgreSQL container starts
+      |
+      v
+00-bootstrap.sh runs
+      |
+      +--> migrations
+      +--> indexes
+      +--> seed data
+      |
+      v
+hotel_assessment database ready
+```
 
 ### Verify seeded data
 
@@ -205,6 +299,24 @@ Restore a specific dump file:
 
 ```bash
 ./scripts/restore.sh backups/postgres-YYYYMMDD-HHMMSS.dump
+```
+
+### Backup and restore flow
+
+```text
+source database
+      |
+      v
+./scripts/backup.sh
+      |
+      v
+timestamped .dump file
+      |
+      v
+./scripts/restore.sh
+      |
+      v
+fresh database: hotel_assessment_restored
 ```
 
 ### Verify restore
